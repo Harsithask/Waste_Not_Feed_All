@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
@@ -27,3 +28,32 @@ export default function AppNavigator() {
     </Stack.Navigator>
   );
 }
+=======
+import React from 'react';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+// Import your actual screens
+import DonorDashboard from '../screens/DonorDashboard'; // Check spelling: Donar vs Donor
+import AddDonationScreen from '../screens/AddDonationScreen';
+
+const Stack = createNativeStackNavigator();
+
+function AppNavigator() {
+  return (
+    <Stack.Navigator initialRouteName="Dashboard">
+      <Stack.Screen 
+        name="Dashboard" 
+        component={DonorDashboard} 
+        options={{ title: 'Donor Dashboard' }}
+      />
+      <Stack.Screen 
+        name="AddDonation" 
+        component={AddDonationScreen} 
+        options={{ title: 'Add New Donation' }}
+      />
+    </Stack.Navigator>
+  );
+}
+
+export default AppNavigator;
+>>>>>>> 42d598a (Updated donation backend and frontend)

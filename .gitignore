@@ -1,8 +1,11 @@
-venv/
-.env
-__pycache__/
-*.pyc
+# Dependencies
 node_modules/
-.expo/
+.env
+
+# Build outputs
 dist/
 build/
+
+# OS metadata
+.DS_Store
+Thumbs.db

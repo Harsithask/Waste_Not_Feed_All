@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const BASE_URL = "http://localhost:8000";
 
 
@@ -55,3 +56,16 @@ export const loginUser = async (data) => {
 
   return response.json();
 };
+=======
+import axios from "axios";
+import { API_BASE_URL } from "../utils/constants";
+
+const API = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+export default API;
+>>>>>>> 42d598a (Updated donation backend and frontend)
