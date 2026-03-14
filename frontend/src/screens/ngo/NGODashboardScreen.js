@@ -1,7 +1,8 @@
 import React from "react";
 import {
   View, Text, TouchableOpacity,
-  StyleSheet, SafeAreaView, ScrollView, Alert,
+  StyleSheet, SafeAreaView, ScrollView,
+  Alert, Platform,
 } from "react-native";
 import { logoutUser } from "../../services/api";
  
@@ -41,18 +42,26 @@ export default function NGODashboardScreen({ navigation, route }) {
     },
   ];
  
-  const handleLogout = () => {
-    Alert.alert("Logout", "Are you sure you want to logout?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          await logoutUser();
-          navigation.replace("Login");
+  const handleLogout = async () => {
+    if (Platform.OS === "web") {
+      // window.confirm works on web
+      const confirmed = window.confirm("Are you sure you want to logout?");
+      if (!confirmed) return;
+      await logoutUser();
+      navigation.replace("Login");
+    } else {
+      Alert.alert("Logout", "Are you sure you want to logout?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            await logoutUser();
+            navigation.replace("Login");
+          },
         },
-      },
-    ]);
+      ]);
+    }
   };
  
   return (
