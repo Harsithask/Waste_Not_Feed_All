@@ -12,14 +12,14 @@ router = APIRouter(
 # ── Schemas ────────────────────────────────────────────────
 class DonationCreate(BaseModel):
     name:            str
-    type:            Optional[str]  = None
-    pickup_location: Optional[str]  = None
-    contact_no:      Optional[str]  = None
-    expiry:          Optional[str]  = None
-    quantity:        Optional[int]  = None
-    description:     Optional[str]  = None
-    donor_name:      Optional[str]  = None
-    status:          Optional[str]  = "available"
+    type:            Optional[str] = None
+    pickup_location: Optional[str] = None
+    contact_no:      Optional[str] = None
+    expiry:          Optional[str] = None
+    quantity:        Optional[int] = None
+    description:     Optional[str] = None
+    donor_name:      Optional[str] = None
+    status:          Optional[str] = "available"
  
  
 class ClaimRequest(BaseModel):
@@ -52,16 +52,14 @@ def get_all_donations():
  
 # ══════════════════════════════════════════════════════════
 #  GET /donations/available  — only unclaimed donations
+#  Handles mixed case: "available", "Available", "AVAILABLE"
 # ══════════════════════════════════════════════════════════
 @router.get("/available")
 def get_available_donations():
-    result = (
-        supabase.table("donations")
-        .select("*")
-        .eq("status", "available")
-        .execute()
-    )
-    return result.data or []
+    result = supabase.table("donations").select("*").execute()
+    data = [d for d in (result.data or [])
+            if str(d.get("status", "")).lower() == "available"]
+    return data
  
  
 # ══════════════════════════════════════════════════════════
@@ -83,7 +81,7 @@ def get_my_claims(ngo_id: str):
 # ══════════════════════════════════════════════════════════
 @router.put("/{donation_id}/claim")
 def claim_donation(donation_id: int, body: ClaimRequest):
-    # Check donation exists and is still available
+    # Check donation exists
     check = (
         supabase.table("donations")
         .select("id, status")
@@ -93,7 +91,9 @@ def claim_donation(donation_id: int, body: ClaimRequest):
     if not check.data:
         raise HTTPException(status_code=404, detail="Donation not found")
  
-    if check.data[0]["status"] != "available":
+    # Case-insensitive available check
+    current_status = str(check.data[0].get("status", "")).lower()
+    if current_status != "available":
         raise HTTPException(status_code=400, detail="Donation is no longer available")
  
     result = (
