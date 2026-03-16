@@ -26,8 +26,10 @@ def register_donor(user: DonorRegister):
         "password": password
     }).execute()
 
-    return {"message": "Donor registered successfully"}
-
+    return {
+        "message": "Donor registered successfully",
+        "data": data.data
+}
 # -------- NGO REGISTER --------
 
 @router.post("/register/ngo")
@@ -89,35 +91,45 @@ def register_volunteer(user: VolunteerRegister):
 @router.post("/login")
 def login(user: LoginSchema):
 
-    table = ""
+    tables = [
+        ("donors", "donor"),
+        ("ngos", "ngo"),
+        ("volunteers", "volunteer")
+    ]
 
-    if user.role == "donor":
-        table = "donors"
-    elif user.role == "ngo":
-        table = "ngos"
-    elif user.role == "volunteer":
-        table = "volunteers"
+    db_user = None
+    role = None
 
-    result = supabase.table(table).select("*").eq("email", user.email).execute()
+    for table_name, role_name in tables:
 
-    if len(result.data) == 0:
-        raise HTTPException(status_code=404, detail="User not found")
+        result = supabase.table(table_name).select("*").eq("email", user.email).execute()
 
-    db_user = result.data[0]
+        if len(result.data) > 0:
+            db_user = result.data[0]
+            role = role_name
+            break
+
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Email not registered")
 
     if not verify_password(user.password, db_user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid password")
+        raise HTTPException(status_code=401, detail="Wrong password")
 
-    # NGO verification check
-    if user.role == "ngo":
+    if role == "ngo":
         if db_user["verification_status"] != "approved":
             raise HTTPException(
                 status_code=403,
                 detail="NGO account not verified yet"
             )
 
+    user_data = {
+        "id": db_user["id"],
+        "name": db_user["name"],
+        "email": db_user["email"]
+    }
+
     return {
         "message": "Login successful",
-        "role": user.role,
-        "user": db_user
+        "role": role,
+        "user": user_data
     }

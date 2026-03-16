@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Waste Not Feed All",
+    "slug": "waste-not-feed-all",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Waste Not Feed All to access your photos.",
+          "cameraPermission": "Allow Waste Not Feed All to access your camera."
+        }
+      ],
+     ["expo-location", {
+    "locationWhenInUsePermission": "Allow Waste Not Feed All to find your location for delivery routes."
+  }]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.harsitha.wastenot"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.harsitha.wastenot",
+      "permissions": ["android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE"]
+    }
+  }
+}

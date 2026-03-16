@@ -92,34 +92,34 @@ const handleRegister = async () => {
 
   if(!validateForm()) return;
 
-  try{
+  try {
 
-    const result = await registerNGO({
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
+  const result = await registerNGO({
+    name: form.name,
+    email: form.email,
+    phone: form.phone,
 
-      organization_name: form.organization,
-      registration_number: form.reg_no,
-      government_id: form.reg_no,
-      document_url: form.doc,
+    organization_name: form.organization,
+    registration_number: form.reg_no,
+    government_id: form.reg_no,
+    document_url: form.doc,
 
-      address: "Not provided",
-      city: form.city,
-      state: form.state,
+    address: "Not provided",
+    city: form.city,
+    state: form.state,
 
-      password: form.password
-    });
+    password: form.password
+  });
 
-    alert(result.message || "NGO registered successfully");
+  alert(result.message || "NGO registered successfully");
 
-  }
-  catch(error){
+} catch (error) {
 
-    console.log(error);
-    alert("Registration failed");
+  console.log(error);
 
-  }
+  alert(error.message || "Registration failed");
+
+}
 
 };
 return(

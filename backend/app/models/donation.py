@@ -14,3 +14,4 @@ class Donation(Base):
     contact_no = Column(String)
     status = Column(String, default="Available")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    claimed_by= Column(String, nullable=True)

@@ -80,10 +80,8 @@ alert(result.message || "Volunteer registered successfully");
 
 }
 catch(error){
-
-console.log(error);
-alert("Registration failed");
-
+  console.log(error);
+  alert(error.message || "Registration failed");
 }
 
 };

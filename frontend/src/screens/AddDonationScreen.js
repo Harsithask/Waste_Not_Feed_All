@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView, Platform } from "react-native";
 import { Search, Bell, User, LogOut, HeartHandshake } from "lucide-react-native"; // Make sure to install: npm install lucide-react-native
+import { API } from "../services/api";
 
 // Simple Header Component matching the images
 const Header = () => (
@@ -14,7 +15,9 @@ const Header = () => (
       <View style={styles.activeNavLinkWrapper}>
         <Text style={[styles.navLink, styles.activeNavLink]}>Post Donation</Text>
       </View>
-      <Text style={styles.navLink}>My Donations</Text>
+      <TouchableOpacity onPress={() => navigation.navigate("DonorDashboard")}>
+  <Text style={styles.navLink}>My Donations</Text>
+</TouchableOpacity>
     </View>
     <View style={styles.headerRight}>
       <TouchableOpacity style={styles.iconButton}>
@@ -33,15 +36,33 @@ const Header = () => (
   </View>
 );
 
-const AddDonationScreen = () => {
+const AddDonationScreen = ({ navigation }) => {
   const [foodName, setFoodName] = useState("");
   const [foodType, setFoodType] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
 
   // Simplified version without logic, just showing the UI
-  const handlePostDonation = () => {
-    alert("Post Donation button pressed!");
-  };
+  const handlePostDonation = async () => {
+  try {
+    const donationData = {
+      name: foodName,
+      type: foodType,
+      pickup_location: pickupAddress,
+      expiry: "2026-03-10",
+      contact_no: "9876543210"
+    };
+
+    await API.post("/donations", donationData);
+
+    alert("Donation posted successfully!");
+
+    navigation.navigate("DonorDashboard");
+
+  } catch (error) {
+    console.log(error);
+    alert("Failed to post donation");
+  }
+};
 
   return (
     <View style={styles.mainWrapper}>

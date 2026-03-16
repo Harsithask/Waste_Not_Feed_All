@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from "react-native";
-import API from "../services/api";
+import { API } from "../services/api";
 import DonationCard from "../components/DonationCard";
 import { HeartHandshake } from "lucide-react-native"; // npm install lucide-react-native
 
@@ -11,7 +11,9 @@ const DonorDashboard = ({ navigation }) => {
     const fetchDonations = async () => {
       try {
         const res = await API.get("/donations");
-        setDonations(res.data);
+        // Check if the response is the array itself or has a .data property
+        const dataToSet = res.data ? res.data : res; 
+        setDonations(dataToSet);
       } catch (error) {
         console.log("Error fetching:", error);
       }
@@ -44,7 +46,7 @@ const DonorDashboard = ({ navigation }) => {
         </View>
 
         {/* List of Items */}
-        {donations.length > 0 ? (
+        {donations?.length > 0 ? (
           <FlatList
             data={donations}
             keyExtractor={(item) => item.id.toString()}
