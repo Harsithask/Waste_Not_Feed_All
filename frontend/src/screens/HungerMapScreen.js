@@ -1,233 +1,415 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Linking, Platform, ScrollView,
-  StyleSheet, Text, TouchableOpacity, View,
+  View, Text, TouchableOpacity, StyleSheet,
+  SafeAreaView, ActivityIndicator, ScrollView,
+  Platform, Modal, TextInput,
 } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
-
-const BASE_URL = "http://127.0.0.1:8000";
-
-async function apiFetch(path, options = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" }, ...options,
+import { API } from "../services/api";
+ 
+let MapContainer, TileLayer, CircleMarker, Tooltip, useMap;
+ 
+const TYPE_CONFIG = {
+  homeless_shelter:   { color: "#d32f2f", emoji: "🏠", label: "Homeless Shelter" },
+  orphanage:          { color: "#e64a19", emoji: "👶", label: "Orphanage" },
+  old_age_home:       { color: "#7b1fa2", emoji: "👴", label: "Old Age Home" },
+  community_kitchen:  { color: "#1565c0", emoji: "🍽️", label: "Community Kitchen" },
+  slum_settlement:    { color: "#f57f17", emoji: "🏘️", label: "Slum Settlement" },
+  ngo_distribution:   { color: "#2e7d32", emoji: "📦", label: "NGO / Community Hall" },
+  govt_welfare:       { color: "#00838f", emoji: "🏛️", label: "Govt Welfare Centre" },
+  low_income_housing: { color: "#4527a0", emoji: "🏗️", label: "Low Income Housing" },
+};
+const DEFAULT_TYPE = { color: "#e53935", emoji: "📍", label: "Need Point" };
+ 
+const DISTRICT_CENTERS = {
+  "All":        [11.1271, 77.5000],
+  "Coimbatore": [11.0168, 76.9558],
+  "Erode":      [11.3410, 77.7172],
+  "Tiruppur":   [11.1075, 77.3411],
+  "Nilgiris":   [11.4916, 76.7337],
+  "Salem":      [11.6643, 78.1460],
+  "Dindigul":   [10.3673, 77.9803],
+  "Namakkal":   [11.2189, 78.1674],
+  "Karur":      [10.9601, 78.0766],
+};
+ 
+const DISTRICT_ZOOM = {
+  "All": 8, "Coimbatore": 12, "Erode": 12,
+  "Tiruppur": 12, "Nilgiris": 11, "Salem": 12,
+  "Dindigul": 12, "Namakkal": 12, "Karur": 12,
+};
+ 
+function FitBounds({ spots }) {
+  const map = useMap();
+  useEffect(() => {
+    if (spots.length > 0) {
+      const bounds = spots.map((s) => [
+        parseFloat(s.latitude), parseFloat(s.longitude)
+      ]);
+      map.fitBounds(bounds, { padding: [40, 40] });
+    }
+  }, [spots]);
+  return null;
+}
+ 
+export default function HungerMapScreen({ route, navigation }) {
+  const ngoId = route?.params?.ngoId || "";
+  const [allSpots,   setAllSpots]   = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [mapReady,   setMapReady]   = useState(false);
+  const [activeCity, setActiveCity] = useState("All");
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [adding,     setAdding]     = useState(false);
+  const [newSpot,    setNewSpot]    = useState({
+    place_name: "", type: "homeless_shelter",
+    latitude: "", longitude: "", address: "", city: "Coimbatore",
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
-
-const SEVERITY = {
-  critical: { bg: "#FFF0F0", border: "#E53935", text: "#B71C1C", dot: "#E53935" },
-  high:     { bg: "#FFF8E1", border: "#FB8C00", text: "#E65100", dot: "#FB8C00" },
-  moderate: { bg: "#E8F5E9", border: "#43A047", text: "#1B5E20", dot: "#43A047" },
-  safe:     { bg: "#E3F2FD", border: "#1E88E5", text: "#0D47A1", dot: "#1E88E5" },
-};
-
-function severityOf(gapPct) {
-  if (gapPct >= 80) return "critical";
-  if (gapPct >= 60) return "high";
-  if (gapPct >= 30) return "moderate";
-  return "safe";
-}
-
-const StatCard = ({ icon, label, value, color, subtitle }) => (
-  <View style={[S.statCard, { borderTopColor: color }]}>
-    <View style={[S.statIconWrap, { backgroundColor: color + "18" }]}>
-      <MaterialIcons name={icon} size={22} color={color} />
-    </View>
-    <Text style={S.statValue}>{value}</Text>
-    <Text style={S.statLabel}>{label}</Text>
-    {subtitle ? <Text style={S.statSub}>{subtitle}</Text> : null}
-  </View>
-);
-
-const AlertCard = ({ alert }) => {
-  const sev = alert.severity || "high";
-  const c   = SEVERITY[sev] || SEVERITY.high;
-  const gap = Number(alert.gap_percentage || 0);
-  const openMap = () => alert.centroid_lat &&
-    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${alert.centroid_lat},${alert.centroid_lng}`);
-  
-  return (
-    <View style={[S.alertCard, { borderLeftColor: c.border, backgroundColor: c.bg }]}>
-      <View style={S.alertTop}>
-        <View style={[S.alertDot, { backgroundColor: c.dot }]} />
-        <Text style={[S.alertZone, { color: c.text }]}>{alert.zone_label}</Text>
-        <div style={[S.severityPill, { backgroundColor: c.border }]}>
-          <Text style={S.severityPillText}>{sev.toUpperCase()}</Text>
-        </div>
-      </View>
-      <View style={S.alertGapRow}>
-        <Text style={[S.alertGapLabel, { color: c.text }]}>Demand unmet:</Text>
-        <View style={S.alertGapTrack}>
-          <View style={[S.alertGapFill, { width: `${Math.min(100, gap)}%`, backgroundColor: c.border }]} />
+ 
+  const districts = Object.keys(DISTRICT_CENTERS);
+  const spots = activeCity === "All"
+    ? allSpots
+    : allSpots.filter(s => s.city === activeCity);
+ 
+  useEffect(() => {
+    if (Platform.OS === "web") {
+      if (!document.getElementById("leaflet-css")) {
+        const link = document.createElement("link");
+        link.id = "leaflet-css"; link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+      import("react-leaflet").then((mod) => {
+        MapContainer = mod.MapContainer;
+        TileLayer    = mod.TileLayer;
+        CircleMarker = mod.CircleMarker;
+        Tooltip      = mod.Tooltip;
+        useMap       = mod.useMap;
+        setMapReady(true);
+      });
+    }
+    fetchSpots();
+  }, []);
+ 
+  const fetchSpots = async () => {
+    setLoading(true);
+    try {
+      const data = await API.get("/ngo/red-spots");
+      setAllSpots(data || []);
+    } catch (err) {
+      console.log("Error:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+ 
+  const handleAddSpot = async () => {
+    if (!newSpot.place_name) { window.alert("Place name is required"); return; }
+    if (!newSpot.latitude)   { window.alert("Latitude is required");   return; }
+    if (!newSpot.longitude)  { window.alert("Longitude is required");  return; }
+    setAdding(true);
+    try {
+      await API.post("/ngo/red-spots", {
+        ...newSpot,
+        latitude:  parseFloat(newSpot.latitude),
+        longitude: parseFloat(newSpot.longitude),
+      });
+      setShowAdd(false);
+      setNewSpot({ place_name: "", type: "homeless_shelter", latitude: "", longitude: "", address: "", city: "Coimbatore" });
+      fetchSpots();
+    } catch (err) {
+      window.alert("Error: " + err.message);
+    } finally {
+      setAdding(false);
+    }
+  };
+ 
+  const typeCounts = spots.reduce((acc, s) => {
+    acc[s.type] = (acc[s.type] || 0) + 1;
+    return acc;
+  }, {});
+ 
+  const renderMap = () => {
+    if (Platform.OS !== "web") {
+      return (
+        <View style={styles.mapPlaceholder}>
+          <Text style={styles.mapPlaceholderText}>🗺️ Open in browser to view map</Text>
         </View>
-        <Text style={[S.alertGapPct, { color: c.text }]}>{gap.toFixed(0)}%</Text>
+      );
+    }
+    if (!mapReady) {
+      return (
+        <View style={styles.mapPlaceholder}>
+          <ActivityIndicator color="#d32f2f" />
+          <Text style={{ marginTop: 8, color: "#666" }}>Loading map...</Text>
+        </View>
+      );
+    }
+ 
+    const center = DISTRICT_CENTERS[activeCity] || DISTRICT_CENTERS["All"];
+    const zoom   = DISTRICT_ZOOM[activeCity]    || 8;
+ 
+    return (
+      <View style={styles.mapWrapper}>
+        <MapContainer
+          key={activeCity}
+          center={center}
+          zoom={zoom}
+          style={{ width: "100%", height: "100%" }}
+          scrollWheelZoom={true}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {spots.length > 0 && activeCity === "All" && (
+            <FitBounds spots={spots} />
+          )}
+          {spots.map((spot, idx) => {
+            const cfg = TYPE_CONFIG[spot.type] || DEFAULT_TYPE;
+            return (
+              <CircleMarker
+                key={idx}
+                center={[parseFloat(spot.latitude), parseFloat(spot.longitude)]}
+                radius={10}
+                pathOptions={{
+                  color: cfg.color, fillColor: cfg.color,
+                  fillOpacity: 0.8, weight: 2,
+                }}
+              >
+                <Tooltip direction="top" offset={[0, -8]}>
+                  <div style={{ minWidth: 190 }}>
+                    <div style={{ fontWeight: "bold", color: cfg.color, marginBottom: 4 }}>
+                      {cfg.emoji} {spot.place_name}
+                    </div>
+                    <div>🏷️ {cfg.label}</div>
+                    {spot.address && <div>📍 {spot.address}</div>}
+                    <div>🏙️ {spot.city}</div>
+                  </div>
+                </Tooltip>
+              </CircleMarker>
+            );
+          })}
+        </MapContainer>
       </View>
-      <Text style={[S.alertDetail, { color: c.text }]}>
-        Demand: {alert.total_demand ?? "-"}  Supply: {alert.supply ?? "-"}
-      </Text>
-      <TouchableOpacity style={[S.alertMapBtn, { borderColor: c.border }]} onPress={openMap}>
-        <MaterialIcons name="place" size={13} color={c.text} />
-        <Text style={[S.alertMapBtnText, { color: c.text }]}>View Map</Text>
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-const MapPanel = ({ clusters, loading }) => {
-  if (loading) return (
-    <View style={S.mapLoader}>
-      <ActivityIndicator size="large" color="#2E7D32" />
-      <Text style={S.mapLoaderText}>Loading AI Analytics...</Text>
-    </View>
-  );
-
-  const first  = clusters[0];
-  const center = first ? `${first.centroid_lat},${first.centroid_lng}` : "11.1271,78.6569";
-  
+    );
+  };
+ 
   return (
-    <View style={S.nativeMap}>
-      <MaterialIcons name="map" size={36} color="#2E7D32" />
-      <Text style={S.nativeMapTitle}>Cluster Centroids Found: {clusters.length}</Text>
-      {clusters.length === 0
-        ? <Text style={S.nativeMapEmpty}>No data yet. Run analysis below.</Text>
-        : clusters.slice(0, 8).map(c => (
-            <TouchableOpacity key={c.zone_label}
-              onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${c.centroid_lat},${c.centroid_lng}`)}>
-              <Text style={[S.nativeMapRow, c.red_zone && { color: "#E53935", fontWeight: "bold" }]}>
-                {c.red_zone ? "🚨" : "📍"} {c.zone_label} ({Number(c.centroid_lat).toFixed(4)})
+    <SafeAreaView style={styles.container}>
+ 
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>📍 Food Need Map</Text>
+          <Text style={styles.headerSub}>
+            {spots.length} locations • {activeCity === "All" ? "8 Districts" : activeCity}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.addBtn} onPress={() => setShowAdd(true)}>
+          <Text style={styles.addBtnText}>+ Add</Text>
+        </TouchableOpacity>
+      </View>
+ 
+      {/* District Tabs */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={styles.tabsScroll} contentContainerStyle={{ padding: 8, gap: 6 }}>
+        {districts.map((city) => {
+          const count = city === "All"
+            ? allSpots.length
+            : allSpots.filter(s => s.city === city).length;
+          return (
+            <TouchableOpacity key={city}
+              style={[styles.tab, activeCity === city && styles.tabActive]}
+              onPress={() => setActiveCity(city)}>
+              <Text style={[styles.tabText, activeCity === city && styles.tabTextActive]}>
+                {city}
+              </Text>
+              <Text style={[styles.tabCount, activeCity === city && styles.tabCountActive]}>
+                {count}
               </Text>
             </TouchableOpacity>
-          ))
-      }
-    </View>
-  );
-};
-
-const ClusterRow = ({ item, index }) => {
-  const sev = item.severity || severityOf(item.gap_percentage || 0);
-  const c   = SEVERITY[sev] || SEVERITY.safe;
-  const gap = Number(item.gap_percentage || 0);
-  return (
-    <View style={[S.tableRow, index % 2 === 1 && S.tableRowAlt]}>
-      <Text style={[S.td, { flex: 1.3, fontWeight: "600" }]}>{item.zone_label}</Text>
-      <Text style={[S.td, { flex: 0.8 }]}>{item.point_count}</Text>
-      <Text style={[S.td, { flex: 0.9 }]}>{item.total_demand}</Text>
-      <View style={[S.td, { flex: 1.1 }]}>
-        <View style={S.gapTrack}>
-          <View style={[S.gapFill, { width: `${Math.min(100, gap)}%`, backgroundColor: c.border }]} />
-        </View>
-        <Text style={{ fontSize: 10 }}>{gap.toFixed(0)}%</Text>
-      </View>
-      <TouchableOpacity style={[S.td, { flex: 0.7, alignItems: "center" }]}
-        onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${item.centroid_lat},${item.centroid_lng}`)}>
-        <MaterialIcons name="open-in-new" size={16} color="#2E7D32" />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-export default function HungerMapScreen({ navigation }) {
-  const [mapLoading, setMapLoading] = useState(true);
-  const [analyzing,  setAnalyzing]  = useState(false);
-  const [clusters,   setClusters]   = useState([]);
-  const [alerts,     setAlerts]     = useState([]);
-  const [kValue,     setKValue]     = useState(5);
-  const [error,      setError]      = useState(null);
-  const [activeTab,  setActiveTab]  = useState("map");
-
-  const loadData = useCallback(async () => {
-    setMapLoading(true); setError(null);
-    try {
-      const mapData = await apiFetch("/hotspot/analyze?k=" + kValue, { method: "POST" });
-      setClusters(mapData.clusters || []);
-      const alertData = await apiFetch("/hotspot/alerts");
-      setAlerts(alertData.alerts || []);
-    } catch (e) {
-      setError("Connect to FastAPI server to see AI Hotspots.");
-    } finally { setMapLoading(false); }
-  }, [kValue]);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const redCount = clusters.filter(c => c.red_zone).length;
-
-  return (
-    <ScrollView style={S.screen} contentContainerStyle={S.content}>
-      <View style={S.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={S.backBtn}>
-          <MaterialIcons name="arrow-back" size={20} color="#2E7D32" />
-        </TouchableOpacity>
-        <View>
-          <Text style={S.title}>Hunger Hotspot Map</Text>
-          <Text style={S.subtitle}>Unsupervised Machine Learning Analysis</Text>
-        </View>
-        <TouchableOpacity style={S.btnPrimary} onPress={loadData} disabled={analyzing}>
-          <Text style={S.btnPrimaryTxt}>{analyzing ? "Analyzing..." : "Refresh AI"}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {error && (
-        <View style={S.errBanner}>
-          <Text style={S.errText}>{error}</Text>
-        </View>
+          );
+        })}
+      </ScrollView>
+ 
+      {/* Type chips */}
+      {!loading && spots.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}
+          style={styles.summaryScroll}
+          contentContainerStyle={{ paddingHorizontal: 10, gap: 6 }}>
+          {Object.entries(typeCounts).map(([type, count]) => {
+            const cfg = TYPE_CONFIG[type] || DEFAULT_TYPE;
+            return (
+              <View key={type} style={[styles.chip, { borderColor: cfg.color }]}>
+                <Text style={styles.chipEmoji}>{cfg.emoji}</Text>
+                <Text style={[styles.chipCount, { color: cfg.color }]}>{count}</Text>
+                <Text style={styles.chipLabel}>{cfg.label}</Text>
+              </View>
+            );
+          })}
+        </ScrollView>
       )}
-
-      <View style={S.statsRow}>
-        <StatCard icon="layers" label="Sectors" value={clusters.length} color="#2E7D32" />
-        <StatCard icon="warning" label="Red Zones" value={redCount} color="#E53935" />
-      </View>
-
-      <View style={S.bodyRow}>
-        <View style={S.mapPanel}>
-          <MapPanel clusters={clusters} loading={mapLoading} />
+ 
+      {/* Map */}
+      {loading
+        ? <View style={styles.mapPlaceholder}>
+            <ActivityIndicator size="large" color="#d32f2f" />
+            <Text style={{ marginTop: 10, color: "#666" }}>Loading locations...</Text>
+          </View>
+        : renderMap()
+      }
+ 
+      {/* Legend */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        style={styles.legendScroll} contentContainerStyle={{ padding: 6, gap: 5 }}>
+        {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
+          <View key={key} style={[styles.legendItem,
+            { backgroundColor: cfg.color + "15", borderColor: cfg.color }]}>
+            <Text style={styles.legendEmoji}>{cfg.emoji}</Text>
+            <Text style={[styles.legendText, { color: cfg.color }]}>{cfg.label}</Text>
+          </View>
+        ))}
+      </ScrollView>
+ 
+      {/* Locations list */}
+      <ScrollView style={styles.list}>
+        <Text style={styles.listTitle}>📋 Locations ({spots.length})</Text>
+        {spots.map((spot, idx) => {
+          const cfg = TYPE_CONFIG[spot.type] || DEFAULT_TYPE;
+          return (
+            <View key={idx} style={[styles.spotCard, { borderLeftColor: cfg.color }]}>
+              <Text style={styles.spotEmoji}>{cfg.emoji}</Text>
+              <View style={styles.spotInfo}>
+                <Text style={styles.spotName}>{spot.place_name}</Text>
+                <Text style={styles.spotMeta}>{cfg.label} • {spot.city}</Text>
+                {spot.address
+                  ? <Text style={styles.spotAddress}>📍 {spot.address}</Text>
+                  : null}
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+ 
+      {/* Add Location Modal */}
+      <Modal visible={showAdd} transparent animationType="slide"
+        onRequestClose={() => setShowAdd(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>📍 Add a Location in Need</Text>
+            <Text style={styles.modalSub}>
+              Spotted people in need? Add this location.
+            </Text>
+ 
+            <TextInput style={styles.input} placeholder="Place Name *"
+              value={newSpot.place_name}
+              onChangeText={(t) => setNewSpot({ ...newSpot, place_name: t })} />
+            <TextInput style={styles.input} placeholder="Address"
+              value={newSpot.address}
+              onChangeText={(t) => setNewSpot({ ...newSpot, address: t })} />
+            <TextInput style={styles.input} placeholder="Latitude * (e.g. 11.0168)"
+              value={newSpot.latitude} keyboardType="numeric"
+              onChangeText={(t) => setNewSpot({ ...newSpot, latitude: t })} />
+            <TextInput style={styles.input} placeholder="Longitude * (e.g. 76.9558)"
+              value={newSpot.longitude} keyboardType="numeric"
+              onChangeText={(t) => setNewSpot({ ...newSpot, longitude: t })} />
+ 
+            <Text style={styles.typeLabel}>District:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 12 }}>
+              {Object.keys(DISTRICT_CENTERS).filter(d => d !== "All").map((city) => (
+                <TouchableOpacity key={city}
+                  style={[styles.typeChip,
+                    newSpot.city === city && { backgroundColor: "#c62828", borderColor: "#c62828" }]}
+                  onPress={() => setNewSpot({ ...newSpot, city })}>
+                  <Text style={[styles.typeChipText,
+                    newSpot.city === city && { color: "#fff" }]}>{city}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+ 
+            <Text style={styles.typeLabel}>Type:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              style={{ marginBottom: 14 }}>
+              {Object.entries(TYPE_CONFIG).map(([key, cfg]) => (
+                <TouchableOpacity key={key}
+                  style={[styles.typeChip,
+                    newSpot.type === key && { backgroundColor: cfg.color, borderColor: cfg.color }]}
+                  onPress={() => setNewSpot({ ...newSpot, type: key })}>
+                  <Text style={[styles.typeChipText,
+                    newSpot.type === key && { color: "#fff" }]}>
+                    {cfg.emoji} {cfg.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+ 
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn}
+                onPress={() => setShowAdd(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitBtn, adding && { opacity: 0.6 }]}
+                onPress={handleAddSpot} disabled={adding}>
+                {adding
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.submitBtnText}>Add Location</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-
-        <View style={S.alertPanel}>
-          <Text style={S.alertHeadTxt}>Active Alerts</Text>
-          {alerts.map((a, i) => <AlertCard key={i} alert={a} />)}
-        </View>
-      </View>
-    </ScrollView>
+      </Modal>
+ 
+    </SafeAreaView>
   );
 }
-
-// Reuse your existing StyleSheet 'S' here...
-const SH = { elevation: 3 };
-const S = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F4F6F9" },
-  content: { padding: 16 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 20, gap: 12 },
-  backBtn: { padding: 8, backgroundColor: "#E8F5E9", borderRadius: 8 },
-  title: { fontSize: 22, fontWeight: "800", color: "#1A1C1E" },
-  subtitle: { fontSize: 12, color: "#888" },
-  btnPrimary: { marginLeft: "auto", backgroundColor: "#2E7D32", padding: 10, borderRadius: 8 },
-  btnPrimaryTxt: { color: "#fff", fontWeight: "bold" },
-  errBanner: { backgroundColor: "#FFEBEE", padding: 10, borderRadius: 8, marginBottom: 10 },
-  errText: { color: "#B71C1C", fontSize: 12 },
-  statsRow: { flexDirection: "row", gap: 12, marginBottom: 16 },
-  statCard: { flex: 1, backgroundColor: "#fff", borderRadius: 12, padding: 16, borderTopWidth: 3, alignItems: "center", ...SH },
-  statValue: { fontSize: 22, fontWeight: "bold" },
-  statLabel: { fontSize: 12, color: "#666" },
-  bodyRow: { gap: 16 },
-  mapPanel: { backgroundColor: "#fff", borderRadius: 12, height: 250, justifyContent: "center", ...SH },
-  alertPanel: { backgroundColor: "#fff", borderRadius: 12, padding: 16, ...SH },
-  alertHeadTxt: { fontSize: 16, fontWeight: "bold", marginBottom: 12 },
-  alertCard: { borderLeftWidth: 4, padding: 12, marginBottom: 10, borderRadius: 4, backgroundColor: "#f9f9f9" },
-  alertTop: { flexDirection: "row", alignItems: "center", gap: 8 },
-  alertDot: { width: 8, height: 8, borderRadius: 4 },
-  alertZone: { fontWeight: "bold", flex: 1 },
-  alertGapRow: { flexDirection: "row", alignItems: "center", marginVertical: 8 },
-  alertGapTrack: { flex: 1, height: 6, backgroundColor: "#eee", borderRadius: 3, marginHorizontal: 8 },
-  alertGapFill: { height: 6, borderRadius: 3 },
-  alertMapBtn: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 8 },
-  nativeMap: { alignItems: "center" },
-  nativeMapTitle: { fontWeight: "bold", marginVertical: 8 },
-  nativeMapRow: { fontSize: 13, marginVertical: 2 },
-  tableRow: { flexDirection: "row", padding: 10, borderBottomWidth: 1, borderColor: "#eee" },
-  td: { fontSize: 12 },
-  gapTrack: { height: 4, backgroundColor: "#eee", width: 50 }
+ 
+const styles = StyleSheet.create({
+  container:          { flex: 1, backgroundColor: "#f0f4f8" },
+  header:             { backgroundColor: "#c62828", padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  headerTitle:        { fontSize: 20, fontWeight: "bold", color: "#fff" },
+  headerSub:          { fontSize: 12, color: "#ffcdd2", marginTop: 3 },
+  addBtn:             { backgroundColor: "rgba(255,255,255,0.2)", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.4)" },
+  addBtnText:         { color: "#fff", fontWeight: "700", fontSize: 13 },
+  tabsScroll:         { maxHeight: 52, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#eee" },
+  tab:                { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1.5, borderColor: "#ddd", flexDirection: "row", alignItems: "center", gap: 5 },
+  tabActive:          { backgroundColor: "#c62828", borderColor: "#c62828" },
+  tabText:            { fontSize: 12, fontWeight: "600", color: "#555" },
+  tabTextActive:      { color: "#fff" },
+  tabCount:           { fontSize: 11, color: "#888", backgroundColor: "#f0f0f0", paddingHorizontal: 5, paddingVertical: 1, borderRadius: 10 },
+  tabCountActive:     { color: "#c62828", backgroundColor: "rgba(255,255,255,0.9)" },
+  summaryScroll:      { maxHeight: 50 },
+  chip:               { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#fff", borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
+  chipEmoji:          { fontSize: 13 },
+  chipCount:          { fontSize: 15, fontWeight: "800" },
+  chipLabel:          { fontSize: 10, color: "#666" },
+  mapWrapper:         { height: 340, marginHorizontal: 12, marginTop: 8, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: "#ddd" },
+  mapPlaceholder:     { height: 340, justifyContent: "center", alignItems: "center", backgroundColor: "#f5f5f5", marginHorizontal: 12, marginTop: 8, borderRadius: 12 },
+  mapPlaceholderText: { color: "#888", textAlign: "center" },
+  legendScroll:       { maxHeight: 44 },
+  legendItem:         { flexDirection: "row", alignItems: "center", gap: 3, borderWidth: 1, borderRadius: 14, paddingHorizontal: 7, paddingVertical: 3 },
+  legendEmoji:        { fontSize: 11 },
+  legendText:         { fontSize: 10, fontWeight: "600" },
+  list:               { flex: 1, paddingHorizontal: 12, paddingTop: 6 },
+  listTitle:          { fontSize: 13, fontWeight: "700", color: "#333", marginBottom: 6 },
+  spotCard:           { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderRadius: 10, padding: 10, marginBottom: 5, borderLeftWidth: 4, elevation: 1 },
+  spotEmoji:          { fontSize: 20, marginRight: 10 },
+  spotInfo:           { flex: 1 },
+  spotName:           { fontSize: 13, fontWeight: "700", color: "#1a1a1a" },
+  spotMeta:           { fontSize: 11, color: "#888", marginTop: 1 },
+  spotAddress:        { fontSize: 10, color: "#aaa", marginTop: 1 },
+  modalOverlay:       { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 16 },
+  modalCard:          { backgroundColor: "#fff", borderRadius: 16, padding: 20, maxHeight: "90%" },
+  modalTitle:         { fontSize: 18, fontWeight: "800", color: "#c62828", marginBottom: 4 },
+  modalSub:           { fontSize: 13, color: "#666", marginBottom: 16 },
+  input:              { borderWidth: 1.5, borderColor: "#ddd", borderRadius: 8, padding: 12, marginBottom: 10, fontSize: 14 },
+  typeLabel:          { fontSize: 13, fontWeight: "600", color: "#444", marginBottom: 6 },
+  typeChip:           { borderWidth: 1.5, borderColor: "#ddd", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, marginRight: 8 },
+  typeChipText:       { fontSize: 12, color: "#555", fontWeight: "600" },
+  modalActions:       { flexDirection: "row", gap: 10, marginTop: 8 },
+  cancelBtn:          { flex: 1, borderWidth: 1.5, borderColor: "#ddd", borderRadius: 8, padding: 12, alignItems: "center" },
+  cancelBtnText:      { color: "#555", fontWeight: "700" },
+  submitBtn:          { flex: 1, backgroundColor: "#c62828", borderRadius: 8, padding: 12, alignItems: "center" },
+  submitBtnText:      { color: "#fff", fontWeight: "700" },
 });

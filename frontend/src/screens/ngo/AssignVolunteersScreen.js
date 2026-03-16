@@ -1,70 +1,88 @@
 import React, { useEffect, useState } from "react";
 import {
   View, Text, TouchableOpacity, TextInput,
-  StyleSheet, SafeAreaView, Alert, ActivityIndicator, ScrollView,
+  StyleSheet, SafeAreaView, Alert, ActivityIndicator,
+  ScrollView, Platform,
 } from "react-native";
 import { getAllVolunteers, getActiveEvents, assignVolunteer } from "../../services/api";
  
+// ── Cross-platform helpers ─────────────────────────────────
+const crossConfirm = (title, message) => {
+  if (Platform.OS === "web") {
+    return Promise.resolve(window.confirm(`${title}\n${message}`));
+  }
+  return new Promise((resolve) =>
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+      { text: "Assign", onPress: () => resolve(true) },
+    ])
+  );
+};
+ 
+const crossAlert = (title, message) => {
+  if (Platform.OS === "web") {
+    window.alert(message ? `${title}\n${message}` : title);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+ 
 export default function AssignVolunteersScreen({ route }) {
   const ngoId = route?.params?.ngoId || "";
-  const [volunteers,         setVolunteers]         = useState([]);
-  const [events,             setEvents]             = useState([]);
-  const [loading,            setLoading]            = useState(true);
-  const [selectedEvent,      setSelectedEvent]      = useState(null);
-  const [selectedVolunteer,  setSelectedVolunteer]  = useState(null);
-  const [task,               setTask]               = useState("");
-  const [assigning,          setAssigning]          = useState(false);
+  const [volunteers,        setVolunteers]        = useState([]);
+  const [events,            setEvents]            = useState([]);
+  const [loading,           setLoading]           = useState(true);
+  const [selectedEvent,     setSelectedEvent]     = useState(null);
+  const [selectedVolunteer, setSelectedVolunteer] = useState(null);
+  const [task,              setTask]              = useState("");
+  const [assigning,         setAssigning]         = useState(false);
  
   useEffect(() => { fetchData(); }, []);
  
   const fetchData = async () => {
     try {
-      // GET /volunteers  +  GET /ngo/events/active
       const [volData, evData] = await Promise.all([
         getAllVolunteers(),
         getActiveEvents(),
       ]);
       setVolunteers(volData || []);
-      setEvents(evData || []);
+      setEvents(evData     || []);
     } catch (err) {
-      Alert.alert("Error", err.message || "Could not load data");
+      crossAlert("Error", err.message || "Could not load data");
     } finally {
       setLoading(false);
     }
   };
  
-  const handleAssign = () => {
-    if (!selectedEvent)     { Alert.alert("Please select an event first");     return; }
-    if (!selectedVolunteer) { Alert.alert("Please select a volunteer first");  return; }
+  const handleAssign = async () => {
+    if (!selectedEvent)     { crossAlert("Error", "Please select an event first");    return; }
+    if (!selectedVolunteer) { crossAlert("Error", "Please select a volunteer first"); return; }
  
     const vol = volunteers.find(v => v.id === selectedVolunteer);
     const ev  = events.find(e => e.id === selectedEvent);
  
-    Alert.alert("Confirm Assignment", `Assign ${vol?.name} to "${ev?.title}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Assign",
-        onPress: async () => {
-          setAssigning(true);
-          try {
-            // POST /ngo/assign-volunteer
-            await assignVolunteer({
-              event_id:         selectedEvent,
-              volunteer_id:     selectedVolunteer,
-              task_description: task,
-            });
-            Alert.alert("✅ Done!", `${vol?.name} assigned to ${ev?.title}`);
-            setSelectedEvent(null);
-            setSelectedVolunteer(null);
-            setTask("");
-          } catch (err) {
-            Alert.alert("Error", err.message);
-          } finally {
-            setAssigning(false);
-          }
-        },
-      },
-    ]);
+    const ok = await crossConfirm(
+      "Confirm Assignment",
+      `Assign ${vol?.name} to "${ev?.title}"?`
+    );
+    if (!ok) return;
+ 
+    setAssigning(true);
+    try {
+      await assignVolunteer({
+        event_id:         selectedEvent,
+        volunteer_id:     selectedVolunteer,
+        task_description: task,
+      });
+      crossAlert("✅ Done!", `${vol?.name} assigned to ${ev?.title}`);
+      setSelectedEvent(null);
+      setSelectedVolunteer(null);
+      setTask("");
+    } catch (err) {
+      crossAlert("Error", err.message);
+    } finally {
+      setAssigning(false);
+    }
   };
  
   if (loading) {
@@ -95,10 +113,12 @@ export default function AssignVolunteersScreen({ route }) {
               <TouchableOpacity key={ev.id}
                 style={[styles.chip, selectedEvent === ev.id && styles.chipActive]}
                 onPress={() => setSelectedEvent(ev.id)}>
-                <Text style={[styles.chipText, selectedEvent === ev.id && styles.chipTextActive]}>
+                <Text style={[styles.chipText,
+                  selectedEvent === ev.id && styles.chipTextActive]}>
                   📅 {ev.title}
                 </Text>
-                <Text style={[styles.chipSub, selectedEvent === ev.id && { color: "#c8e6c9" }]}>
+                <Text style={[styles.chipSub,
+                  selectedEvent === ev.id && { color: "#c8e6c9" }]}>
                   📍 {ev.location}
                 </Text>
               </TouchableOpacity>
@@ -128,7 +148,9 @@ export default function AssignVolunteersScreen({ route }) {
                 <Text style={styles.volDetail}>📧 {vol.email}</Text>
                 <Text style={styles.volDetail}>📍 {vol.city} • 📞 {vol.phone}</Text>
               </View>
-              {selectedVolunteer === vol.id && <Text style={styles.checkmark}>✅</Text>}
+              {selectedVolunteer === vol.id && (
+                <Text style={styles.checkmark}>✅</Text>
+              )}
             </TouchableOpacity>
           ))
         )}
@@ -161,30 +183,30 @@ export default function AssignVolunteersScreen({ route }) {
 }
  
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: "#f0f4f8" },
-  center:         { flex: 1, justifyContent: "center", alignItems: "center" },
-  loadingText:    { marginTop: 12, color: "#666" },
-  heading:        { fontSize: 22, fontWeight: "bold", color: "#2e7d32", padding: 16, paddingBottom: 4 },
-  stepLabel:      { fontSize: 15, fontWeight: "700", color: "#333", paddingHorizontal: 16, paddingVertical: 10 },
-  emptyBox:       { paddingHorizontal: 16, marginBottom: 8 },
-  noData:         { color: "#555", fontSize: 14, fontWeight: "600" },
-  noDataSub:      { color: "#999", fontSize: 13, marginTop: 4 },
-  chip:           { borderWidth: 2, borderColor: "#2e7d32", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginRight: 10, minWidth: 150, marginBottom: 8 },
-  chipActive:     { backgroundColor: "#2e7d32" },
-  chipText:       { color: "#2e7d32", fontWeight: "700", fontSize: 13 },
-  chipTextActive: { color: "#fff" },
-  chipSub:        { color: "#555", fontSize: 11, marginTop: 2 },
-  volunteerCard:  { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 14, borderWidth: 2, borderColor: "transparent", shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
+  container:       { flex: 1, backgroundColor: "#f0f4f8" },
+  center:          { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingText:     { marginTop: 12, color: "#666" },
+  heading:         { fontSize: 22, fontWeight: "bold", color: "#2e7d32", padding: 16, paddingBottom: 4 },
+  stepLabel:       { fontSize: 15, fontWeight: "700", color: "#333", paddingHorizontal: 16, paddingVertical: 10 },
+  emptyBox:        { paddingHorizontal: 16, marginBottom: 8 },
+  noData:          { color: "#555", fontSize: 14, fontWeight: "600" },
+  noDataSub:       { color: "#999", fontSize: 13, marginTop: 4 },
+  chip:            { borderWidth: 2, borderColor: "#2e7d32", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginRight: 10, minWidth: 150, marginBottom: 8 },
+  chipActive:      { backgroundColor: "#2e7d32" },
+  chipText:        { color: "#2e7d32", fontWeight: "700", fontSize: 13 },
+  chipTextActive:  { color: "#fff" },
+  chipSub:         { color: "#555", fontSize: 11, marginTop: 2 },
+  volunteerCard:   { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 14, borderWidth: 2, borderColor: "transparent", shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
   volunteerActive: { borderColor: "#2e7d32", backgroundColor: "#e8f5e9" },
-  volAvatar:      { width: 46, height: 46, borderRadius: 23, backgroundColor: "#2e7d32", justifyContent: "center", alignItems: "center", marginRight: 12 },
-  volAvatarText:  { color: "#fff", fontSize: 20, fontWeight: "700" },
-  volInfo:        { flex: 1 },
-  volName:        { fontSize: 15, fontWeight: "700", color: "#1a1a1a" },
-  volDetail:      { fontSize: 12, color: "#666", marginTop: 2 },
-  checkmark:      { fontSize: 20 },
-  bottomSection:  { padding: 16 },
-  input:          { borderWidth: 1.5, borderColor: "#ddd", borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 14, backgroundColor: "#fff", minHeight: 60, textAlignVertical: "top" },
-  assignBtn:      { backgroundColor: "#2e7d32", borderRadius: 10, padding: 15, alignItems: "center" },
+  volAvatar:       { width: 46, height: 46, borderRadius: 23, backgroundColor: "#2e7d32", justifyContent: "center", alignItems: "center", marginRight: 12 },
+  volAvatarText:   { color: "#fff", fontSize: 20, fontWeight: "700" },
+  volInfo:         { flex: 1 },
+  volName:         { fontSize: 15, fontWeight: "700", color: "#1a1a1a" },
+  volDetail:       { fontSize: 12, color: "#666", marginTop: 2 },
+  checkmark:       { fontSize: 20 },
+  bottomSection:   { padding: 16 },
+  input:           { borderWidth: 1.5, borderColor: "#ddd", borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 14, backgroundColor: "#fff", minHeight: 60, textAlignVertical: "top" },
+  assignBtn:       { backgroundColor: "#2e7d32", borderRadius: 10, padding: 15, alignItems: "center" },
   assignBtnDisabled: { backgroundColor: "#a5d6a7" },
-  assignBtnText:  { color: "#fff", fontWeight: "700", fontSize: 15 },
+  assignBtnText:   { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
