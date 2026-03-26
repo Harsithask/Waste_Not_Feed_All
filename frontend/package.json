@@ -1,0 +1,30 @@
+{
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.6",
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-picker/picker": "^2.11.4",
+    "@react-navigation/native": "^7.1.33",
+    "@react-navigation/native-stack": "^7.14.4",
+    "@supabase/supabase-js": "^2.99.1",
+    "axios": "^1.13.6",
+    "cors": "^2.8.6",
+    "expo": "^55.0.8",
+    "expo-barcode-scanner": "~12.9.1",
+    "expo-camera": "~55.0.11",
+    "expo-file-system": "~55.0.10",
+    "expo-image-picker": "~55.0.13",
+    "expo-location": "~55.1.4",
+    "express": "^5.2.1",
+    "leaflet": "^1.9.4",
+    "lucide-react-native": "^0.577.0",
+    "openai": "^6.29.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-leaflet": "^5.0.0",
+    "react-native-gesture-handler": "^2.30.0",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-web": "^0.21.0",
+    "react-qr-barcode-scanner": "^2.1.23"
+  }
+}
